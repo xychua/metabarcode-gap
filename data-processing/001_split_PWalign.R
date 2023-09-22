@@ -1,5 +1,6 @@
 ## ****************************************************************************
-## README ----
+## Split and sort pairwise alignment file
+##
 ## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
 ##
 ##
@@ -13,15 +14,15 @@
 ##          Linux based command 'split'.
 ##          This step can be skipped if the input file is already split by 
 ##          lines outside of this script. 
+##          The script ASSUMES the first input is an uncompressed text file.
+##          If input is gzipped, then split the input file first outside 
+##          of this script, then run step 2 of this script.
 ##
 ##  Step 2) Expects a directory of spliced files and parses each file, sorting
 ##          the alignments based on the input derepID (queryID).
 ##          If step 1 is skipped, then this step assumes the {input_pwAlign} 
 ##          parameter points to a directory of multiple spliced files.
 ## 
-## The script ASSUMES input(s) are uncompressed text file(s). If input is 
-## gzipped, then split the input file first outside of this script. Then
-## run step 2 of this script.
 ##
 ## USAGE EXAMPLES
 ##
@@ -38,7 +39,7 @@
 ## users to subset the matrix and focus only on the sequences belonging to a set
 ## of species, that is, only extract rows from the pairwise matrix of interest.
 ## If we only retained half the matrix, then there would be missing values when
-## subsetting by rows. As such, we also include reciprocal annotations when
+## sub-setting by rows. As such, we also include reciprocal annotations when
 ## splitting the input pairwise alignment files by the derepID.
 ##
 ##
@@ -49,7 +50,7 @@
 
 
 ## ****************************************************************************
-## SETUP ----
+## setup ----
 ##
 
 library(argparser)
@@ -57,12 +58,11 @@ library(data.table)
 library(futile.logger)
 library(pbapply)
 library(stringr)
-# library(parallel) ## for Linux env
 
 
 
 ## ****************************************************************************
-## PARAMETERS ----
+## parameters ----
 ##
 
 parser <- arg_parser('Split pairwise global alignment by derepID (queryID)', 
@@ -163,7 +163,8 @@ if (summary(file(IN))$class == 'gzfile') {
 
 
 if (!file.exists(IN)) {
-  stop("Missing input file: ", IN)
+  flog.error("Input file not found: %s", IN)
+  stop()
 }
 
 if (!dir.exists(OUT.DIR)) {
@@ -309,7 +310,7 @@ if (!args$skip_split_query) {
 
 
 ## ****************************************************************************
-## Finished ----
+## finished ----
 ##
 
 flog.info("FINISHED", sessionInfo(), capture = T)

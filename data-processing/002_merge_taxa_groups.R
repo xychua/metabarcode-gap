@@ -1,15 +1,15 @@
 ## *****************************************************************************
-## README ----
+## Merge pairwise alignments by groups
+##
 ## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
 ##
 ##
-## This script takes the pairwise global alignments after being split into
-## groups based on their derepID/queryID, and reorganises the data based on
-## the taxonomy lineage. 
-##
-## This requires a metadata file that maps the {derepID/queryID} to a
-## {group} following the taxonomy hierarchy specified in file path format,
-## for example:
+## This script takes the pairwise global alignments after being sorted based on
+## on the queryID/derepID, and reorganise the data based on groups.
+## 
+## The groups are defined is a user specified metadata file that maps the 
+## {queryID/derepID} to a {group} following the taxonomy hierarchy specified 
+## in file path format. For example:
 ##
 ##  DEREPID               GROUP
 ##  KF612341.1_q914_a100  Eukaryota/Metazoa/Chordata/Chordata-subgroup-1
@@ -17,26 +17,17 @@
 ##  MH085614.1_q237_a99   Eukaryota/Metazoa/Chordata/Actinopteri/Actinopteri-subgroup-6
 ##  AP009147.1_q908_a100  Eukaryota/Metazoa/Chordata/Actinopteri/Cypriniformes/Cypriniformes-subgroup-2
 ##
-## * first 2 dereplicated amplicon will be grouped into the Chordata-subgroup-1
-## * third one is grouped into Actinopteri-subgroup-6
-## * forth one is grouped into Cypriniformes-subgroup-2 etc
+##    * first 2 dereplicated amplicon will be grouped into the Chordata-subgroup-1
+##    * third one is grouped into Actinopteri-subgroup-6
+##    * forth one is grouped into Cypriniformes-subgroup-2 etc
 ##
-## The output creates a new directory that follows the hierarchical filepath
-## format as per the metadata file. Binary Rdata objects (*.rds) are saved 
-## in their corresponding sub-folders.
+## OUTPUT
 ##
+## A new directory is created that follows the hierarchical file path structure
+## as per the metadata file. Binary Rdata objects (*.rds) are saved in their
+## corresponding sub-folders.
 ##
-## NOTE: After this step, the input files can be deleted.
-##
-## ____________________
-##   Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
-##  Created: 2021-05-18
-## Modified: 2022-06-26
-##
-## 2022-06-26: remove START and END parameter settings
-## 2022-06-23: will go ahead and remove the sub-files after combining
-## 2022-05-25: new smaller group size (500), output directory nt.20190522.61.taxa
-## 2022-05-18: max group size 1000, output directory nt.20190522.62.taxa/
+## NOTE: After this step, the input director with spliced files can be deleted.
 ##
 ## *****************************************************************************
 
@@ -44,25 +35,25 @@
 
 
 ## *****************************************************************************
-## SETUP ----
+## setup ----
 ##
 
 library(argparser)
 library(data.table)
 library(futile.logger)
-library(pbapply)
-# library(parallel) ## for Linux env
+library(doParallel)
+library(parallel)
 
 
 ## *****************************************************************************
-## PARAMETERS ----
+## parameters ----
 ##
 
 parser <- arg_parser('Merge pairwise alignments by taxonomy groups', 
                      name = '002_merge_taxa_groups.R', 
                      hide.opts = T)
 
-parser <- add_argument(parser, 'indir',
+parser <- add_argument(parser, 'input-dir',
                        help = 'input directory with pairwise sequences sorted by queryID')
 
 parser <- add_argument(parser, 'metadata',
@@ -76,6 +67,10 @@ parser <- add_argument(parser, '--group-col',
 parser <- add_argument(parser, '--outdir', 
                        default = '02-taxaGroups', 
                        help = 'Output directory')
+
+parser <- add_argument(parser, '--num-clusters',
+                       default = 2,
+                       help = 'set the number of clusters for parallel processing')
 
 parser <- add_argument(parser, '--no-log', 
                        flag = T, 
@@ -110,15 +105,17 @@ source("utils/set_logger.R", local = T)
 
 
 ## ****************************************************************************
-## parser parameters ----
+## parse parameters ----
 ##
 
-if (!dir.exists(args$indir)) {
-  stop("Missing input directory: ", args$indir)
+if (!dir.exists(args$input_dir)) {
+  flog.error("Input directory not found: %s", args$input_dir)
+  stop()
 }
 
 if (!file.exists(args$metadata)) {
-  stop("Missing metadata file: ", args$metadata)
+  flog.error("Taxonomy metadata file not found: ", args$metadata)
+  stop()
 }
 
 if (!dir.exists(args$outdir)) {
@@ -146,7 +143,7 @@ flog.info("
 ", 
           parser$name,
           parser$description,
-          args$indir,
+          args$input_dir,
           args$metadata,
           args$group_col,
           logFile,
@@ -155,9 +152,20 @@ flog.info("
 
 
 
+## ****************************************************************************
+## parallel processing ----
+##
+##    * set the number of clusters
+
+flog.debug("Registering num clusters: %d", args$num_clusters)
+cl <- makeCluster(args$num_clusters)
+registerDoParallel(cl)
+
+
+
 
 ## *****************************************************************************
-## LOAD METADATA ----
+## load metadata ----
 ##
 ##    * user can specify the {group} column using the {--group-col} parameter setting
 ##    * Check for missing identifiers --> warning message
@@ -169,7 +177,7 @@ if (!(args$group_col %in% names(metadata))) {
   stop()
 }
 
-pwFiles <- data.table(path=list.files(args$indir, 
+pwFiles <- data.table(path=list.files(args$input_dir, 
                                       full.names = T, 
                                       recursive = F, 
                                       include.dirs = F))
@@ -188,7 +196,7 @@ flog.warn("Missing queries (derepIDs): ", missing.dereps, capture = T)
 
 
 ## ****************************************************************************
-## MERGE TAXONOMY ----
+## merge taxonomy ----
 ##
 ##    * merge taxonomy information with file names for grouping
 
@@ -203,7 +211,7 @@ if (pwFiles_meta[is.na(group), .N] > 0) {
 
 
 ## ****************************************************************************
-## MAP QUERIES to GROUPS ----
+## map queries to groups ----
 ##
 ##    * split metadata into groups and iterate through each group to combine input files
 ##
@@ -245,7 +253,7 @@ z <- pblapply(pwGroups, function(grp) {
 
 
 ## ****************************************************************************
-## Finished ----
+## finished ----
 ##
 
 flog.info("FINISHED", sessionInfo(), capture = T)

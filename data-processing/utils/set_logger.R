@@ -12,7 +12,7 @@ if (!args$no_log) {
     dir.create(args$logDir)
   }
   logFile <- file.path(args$logDir, gsub('.R', paste0('-', timestamp,'.log'), parser$name, fixed=T))
-  flog.info("Generating log file: %s", logFile)
+  flog.info("Generate log file: %s", logFile)
   
   ## append log file
   invisible(flog.appender(appender.tee(logFile)))
@@ -20,8 +20,6 @@ if (!args$no_log) {
 
 if (args$debugOn) {
   invisible(flog.threshold(DEBUG))
-  pboptions(type='none')
 } else {
   invisible(flog.threshold(INFO))
-  pboptions(type='txt')
 }

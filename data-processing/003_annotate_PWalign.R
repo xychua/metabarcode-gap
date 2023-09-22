@@ -1,24 +1,28 @@
 ## ****************************************************************************
-## README ----
+## Annotate PW alignments with taxonomy information
+##
 ## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
 ##
 ##
-## This script parses all files (recursively) in an input directory 
-## and annotates the query and target amplicons with their taxonomy information. 
+## This script parses all files (recursively) given an input directory of
+## spliced Rdata objects following the taxonomy hierarchy structure from 
+## Step 2 - 002_merge_taxa_groups.R script. This step annotates the query 
+## and target amplicon sequences with their taxonomy information.
 ##
-## This requires a metadata file that maps the {derepID/queryID} to a taxonomy
-## hierarchy. The script expects the 8 common taxonomy ranks:
+## This requires a metadata file that maps the {queryID/derepID} to a taxonomy
+## lineage. The script expects the 8 common taxonomy ranks:
 ##    superkingdom, kingdom, phylum, class, order, family, genus, species
 ##
-## The script also performs:
-##    * check the number of pairwise alignments are correct
+## The script also:
+##    * checks that the number of pairwise alignments are correct
 ##    * calculates the alignment coverage
 ##    * assigns the lowest taxonomy rank of query/target pair (see OUTPUT)
 ##
 ## OUTPUT
-##
-##    * Rdata objects (*.dat)
-##    * Tables with 9 columns:
+##    * New directory 03-taxaGroups by default is created with directory structure
+##      mirroring that of the input directory.
+##    * Rdata objects (*.rds) output in corresponding sub-directory
+##    * Data objects are data.tables with 9 columns:
 ##
 ##      COLUMN              DESCRIPTION
 ##      query               query ID (derepID) of the representative amplicon
@@ -35,42 +39,19 @@
 ##      query.variant.type  whether the query species has only one amplicon 
 ##                          variant (single) or multiple variants (multi)
 ##
-##
-## ____________________
-##   Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
-##  Created: 2022-05-19
-## Modified: 2023-04-09
-##
-# 2023-04-09: - update checking output files
-# 2023-04-08: - rename file to help remind run first
-#             - update so that --file-num-length is referring to number of inputs
-#               with no outputs yet. So if --file-num-length=5, the script will
-#               first find which inputs are missing outputs and then operate on 
-#               the first 5 of those inputs. If there are 100 inputs of which 
-#               the first 20 already have outputs, then it will skip the first 20
-#               and operate on inputs #21 to 25.
-# 2022-02-09: - fixed if variantPW is empty then return error message
-# 2022-06-26: - convert character columns to factors to save space
-# 2022-06-23: - change default --file-num-length to allow running from 
-#               command line for small data sets
-# 2022-06-17: - removed the workaround for --annot-type, keep it simple
-# 2022-06-15: - add new parameter '--annot-type' for annotated single pwAlignments
-# 2022-06-14: - add in if...else to check if 'multi' and 'single' exists 
-#               after split by group. rerun for some array jobs that failed
-# 2022-06-13: - change description to differentiate between summarise_PWalign.R script
-#             - parallelise annotation processing
-#
 ## *****************************************************************************
 
 
+
+
 ## *****************************************************************************
-## SETUP ----
+## setup ----
 
 library(argparser)
 library(data.table)
 library(futile.logger)
-library(pbapply)
-# library(parallel) ## for Linux env
+library(doParallel)
+library(parallel)
 
 ## only use these columns if they exists in the group metadata file
 TAXA_RANKS <- c('superkingdom', 'kingdom','phylum', 'class', 'order', 
@@ -85,18 +66,16 @@ source("utils/calc_coverage.R")
 
 
 ## *****************************************************************************
-## PARAMETERS ----
+## parameters ----
 ##
 
 parser <- arg_parser('Parse global PW alignments and returns summary statistics.', 
                      name = '003_annotate_PWalign.R', 
                      hide.opts = T)
 
-parser <- add_argument(parser, 'pwAlignment_path', 
+parser <- add_argument(parser, 'input-dir', 
                        help = 'Global pairwise alignment text file, the output from
-                       VSearch/USearch. If [--recursive] is set then, will assume
-                       this is a directory path containing already spliced pairwise
-                       alignments files with [--extension].')
+                       VSearch/USearch.')
 
 parser <- add_argument(parser, 'metadata',
                        help = 'metadata file containing the derepID mapped to taxonomy
@@ -106,33 +85,25 @@ parser <- add_argument(parser, 'metadata',
 
 parser <- add_argument(parser, '--outdir', 
                        default='03-taxaAnnot',
-                       help = 'Output directory. 
-                       If [--recursive] is enabled, then the directory 
-                       hierarchy structure in [pwAlignment] will be mirrored 
-                       in the output directory')
+                       help = 'Output directory where the directory hierarchy 
+                       structure in the --input-dir will be mirrored.')
 
-parser <- add_argument(parser, '--extension', 
+parser <- add_argument(parser, '--input-ext', 
                        default='.rds',
-                       help = 'if --recursive is enabled then the file extensions
-                       of the split pairwise alignment files, [default=*.rds]')
-
-parser <- add_argument(parser, '--file-start',
-                       default = 1,
-                       help = "for PBS/SLURM or running in parallel mode, to specify 
-                       which file to start from. Only used when [--recursive] 
-                       is enabled")
-
-parser <- add_argument(parser, '--file-num-length',
-                       default = -1,
-                       help = 'for PBS/SLURM or running in parallel mode, specify the 
-                       number of files to iterate. Only used when [--recursive] 
-                       is enabled, otherwise is (default=-1) which will process
-                       all files.')
+                       help = 'file extension of files in the --input-dir')
 
 parser <- add_argument(parser, '--annot-type', 
                        default = 'all',
                        help = "annotate which type of query variant, 
                        choose from {'multi', 'single', 'all'}")
+
+parser <- add_argument(parser, '--file-start',
+                       default = 1,
+                       help = "")
+
+parser <- add_argument(parser, '--file-num-length',
+                       default = -1,
+                       help = "")
 
 parser <- add_argument(parser, '--prefix',
                        default='nt.201905__teleo__', 
@@ -144,6 +115,10 @@ parser <- add_argument(parser, '--check-species-name',
                        help = sprintf('turn on to check species names are unique 
                        and have no lineage conflicts. Assumes existence of
                        columns {%s} in the [metadata] file.', paste(TAXA_RANKS, collapse=',')))
+
+parser <- add_argument(parser, '--num-clusters',
+                       default = 2,
+                       help = 'set the number of clusters for parallel processing')
 
 parser <- add_argument(parser, '--no-log', 
                        flag = T, 
@@ -163,43 +138,24 @@ parser <- add_argument(parser, '--debugOn',
 args <- parse_args(parser)
 
 
-## TEST WITHIN R: uncomment for testing within the script
+## TEST WITHIN R: uncomment to test within R using demo data provided
 # args <- parse_args(parser,
-#                    c('02-taxaGroups',
+#                    c('data/02-taxaGroup',
 #                      'data/nt.201905__teleo__taxaMetadata.tsv',
 #                      '--annot-type', 'all'))
 
 
 
 ## *****************************************************************************
-## LOG FILE ----
+## setup logfile ----
 ##
 
-logFile <- 'no-log-file'
-if (!args$no_log) {
-  timestamp <- format(Sys.time(), format='%Y%m%d_%H%M%S')
-  if (!dir.exists(args$logDir)) {
-    dir.create(args$logDir)
-  }
-  logFile <- file.path(args$logDir, gsub('.R', paste0('_', timestamp,'.log'), parser$name, fixed=T))
-  flog.info("Generating log file: %s", logFile)
-  
-  ## append log file
-  invisible(flog.appender(appender.tee(logFile)))
-  
-  if (args$debugOn) {
-    invisible(flog.threshold(DEBUG))
-    pboptions(type='none')
-  } else {
-    invisible(flog.threshold(INFO))
-    pboptions(type='txt')
-  }
-}
+source("utils/set_logger.R", local = T)
 
 
 
 ## *****************************************************************************
-## CHECK PARAMETERS ----
+## parse parameters ----
 ##
 
 if (!args$annot_type %in% c('multi', 'single', 'all')) {
@@ -207,8 +163,6 @@ if (!args$annot_type %in% c('multi', 'single', 'all')) {
 }
 
 PREFIX    <- args$prefix
-IN        <- list(pwAlignment = args$pwAlignment, 
-                  metadata = args$metadata)
 EXT       <- ifelse(startsWith(args$extension, '*'),
                     args$extension, 
                     paste0('*', args$extension))
@@ -220,9 +174,14 @@ if (!isRDS) {
   stop()
 }
 
-missing_files <- IN[which(!sapply(IN, file.exists))]
-if (length(missing_files) > 0) {
-  stop("Missing input file(s):\n", missing_files)
+if (!dir.exists(args$input_dir)) {
+  flog.error("Input directory not found: %s", args$input_dir)
+  stop()
+}
+
+if (!file.exists(args$metadata)) {
+  flog.info("Metadata file not found: %s", args$metadata)
+  stop()
 }
 
 if (!dir.exists(args$outdir)) {
@@ -239,12 +198,12 @@ flog.info("
 #
 # PARAMETERS
 #       Input global alignment: %s
-#          Group metadata file: %s
-#
-#                    Recursive: %s
-#               File extension: %s
-# From file[start] to [length]: %s to %s
+#       Taxonomy metadata file: %s
 #              Annotation type: %s
+#
+#               File extension: %s
+#             From file[start]: %s 
+#                    to length: %s (if -1, means all files)
 #                       Prefix: %s
 #                      Logfile: %s
 #                        Debug: %s
@@ -255,26 +214,35 @@ flog.info("
 ", 
           parser$name,
           parser$description,
-          IN$pwAlignment,
-          IN$groupFile,
-          args$recursive,
+          args$input_dir,
+          args$metadata,
+          args$annot_type,
           EXT,
           START, args$file_num_length,
-          args$annot_type,
           PREFIX,
           logFile,
           args$debug,
           args$outdir)
 
 
+## ****************************************************************************
+## parallel processing ----
+##
+##    * set the number of clusters
+
+flog.debug("Registering num clusters: %d", args$num_clusters)
+cl <- makeCluster(args$num_clusters)
+registerDoParallel(cl)
+
+
 
 
 ## *****************************************************************************
-## LOAD METADATA ----
+## load metadata ----
 ##
 
-flog.info("Loading: %s", IN$metadata)
-metadata <- fread(IN$metadata)
+flog.info("Loading: %s", args$metadata)
+metadata <- fread(args$metadata)
 setkey(metadata, derepID)
 flog.debug("-- loaded: %d queries (derepID)", metadata[,uniqueN(derepID)])
 
@@ -312,38 +280,40 @@ flog.debug("Num species with MULTI amplicon variants: %d (%.2f%%)",
 
 
 ## ****************************************************************************
-## ANNOTATE PAIRWISE ALIGNMENTS -----
-##
-##    * load in all pairwise alignments objects recursively given an input directory
-##    * annotate the source amplicon and target amplicon
-
+## prepare input files ----
 
 flog.info("Load pairwise alignments...")
-pwFiles <- list.files(IN$pwAlignment, pattern = EXT, recursive = T, full.names = T)
+pwFiles <- list.files(args$input_dir, pattern = EXT, recursive = T, full.names = T)
 pwFiles <- grep('*_(part|rev)[0-9]+.rds', pwFiles, invert=T, value=T)
 flog.debug("Num total files: %d", length(pwFiles))
 
 ## find all expected output files and operate on those that do not yet exists
-iterFiles <- gsub('.rds','',gsub(paste0(IN$pwAlignment, '/'), '', pwFiles))
+iterFiles <- gsub('.rds','',gsub(paste0(args$input_dir, '/'), '', pwFiles))
 
 if (args$annot_type == "all") {
   iterFiles <- metadata[group %in% iterFiles,
                         .N, 
                         .(output = sprintf('%s/%s_%s.rds', args$outdir, group, variant.type),
-                          input = sprintf('%s/%s.rds', IN$pwAlignment, group))]
+                          input = sprintf('%s/%s.rds', args$input_dir, group))]
 } else {
   iterFiles <- metadata[group %in% iterFiles & variant.type == ANNOT.TYPE,
                         .N, 
                         .(output = sprintf('%s/%s_%s.rds', args$outdir, group, variant.type),
-                          input = sprintf('%s/%s.rds', IN$pwAlignment, group))]
+                          input = sprintf('%s/%s.rds', args$input_dir, group))]
 }
 
 iterFiles[, exists := file.exists(output)]
 flog.debug("Num expected outputs: %d", iterFiles[,.N])
 flog.debug("...num already processed: %d", iterFiles[exists == T, .N])
 
-
 iterFiles <- iterFiles[exists == F]
+if (nrow(iterFiles) == 0) {
+  flog.info("No input files to process, process stopped.")
+  quit(status = 0)
+}
+
+
+## only work with non existing output
 if (args$file_num_length == -1) {
   END <- nrow(iterFiles)
 } else {
@@ -357,7 +327,13 @@ if (START <= END) {
 }
 
 
-## iterate through files
+
+## ****************************************************************************
+## annotate pairwise alignments ----
+##
+##    * load in all pairwise alignments objects recursively given an input directory
+##    * annotate the source amplicon and target amplicon
+
 flog.debug("Num files to iterate: %d", nrow(iterFiles))
 z <- apply(iterFiles, MARGIN=1, function(fn) {
   rdsFile <- fn['output']
@@ -430,7 +406,7 @@ z <- apply(iterFiles, MARGIN=1, function(fn) {
     char.cols <- names(which(lapply(dat, class) == 'character'))
     dat[,(char.cols):=lapply(.SD, as.factor), .SDcols=char.cols]
     
-    flog.info("Saving: %s [%d records]", rdsFile, dat[,.N])
+    flog.info("Saving: %-50s [%d records]", rdsFile, dat[,.N])
     saveRDS(dat, file=rdsFile)
     
     rm(dat, groups, pwAlignTaxa)
@@ -442,8 +418,8 @@ z <- apply(iterFiles, MARGIN=1, function(fn) {
 
 
 ## *****************************************************************************
-## FINISHED ----
+## finished ----
 ##
 
 flog.info("FINISHED", sessionInfo(), capture = T)
-flog.appender(appender.console())
+invisible(flog.appender(appender.console()))

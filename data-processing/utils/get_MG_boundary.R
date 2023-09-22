@@ -4,8 +4,8 @@
 #' inter-rank pairwise alignments.
 #'
 #' @param pwAlignTaxa data.table of pairwise alginments that have been
-#'                     taxonomically annotated and contains the {same.taxa}
-#'                     column from \link{annot_taxonomy}
+#'                    taxonomically annotated and contains the {same.taxa}
+#'                    column from \link{annot_taxonomy}
 #' @return MG.boundary data.table with columns:
 #'         1. query.species
 #'         2. same.rank
@@ -25,35 +25,51 @@ get_MG_boundary <- compiler::cmpfun(function(pwAlignTaxa, debug=F) {
   if (!'coverage' %in% names(pwAlignTaxa)) {
     flog.error("Missing {coverage} column attribute")
   } else {
-    ## intra-species boundaries
-    if (pwAlignTaxa[same.rank == 'species', .N] > 0) {
-      intra.dist <- pwAlignTaxa[same.rank == 'species',
-                                .(intra.minP=min(pident),
-                                  intra.maxP=max(pident),
-                                  intra.nPairs=.N,
-                                  nTargetSpecies=uniqueN(target.species)),
-                                .(query.species, same.rank, same.taxa)]
-    } else {
-      ## the query nVariants should be 0
-      if (unique(pwAlignTaxa$query.variant.type) != 'single') {
-        flog.error("query.nVariants > 1, so there should be intra-species comparisons")
-      } else {
-        flog.warn("No intra.species alignments, create self-matches")
-        ## the self-match is the only possible same-species comparison
-        intra.dist <- unique(pwAlignTaxa[,.(query.species,
-                                            same.rank = 'species',
-                                            same.taxa = query.species,
-                                            intra.minP = 100,
-                                            intra.maxP = 100,
-                                            intra.nPairs = 1,
-                                            nTargetSpecies = 1)])
-      }
+    
+    ## ****
+    ## calculate INTRA-species boundaries
+    ##
+    ##    - split the data based on the query.variant.type
+    ##    - species with SINGLE amplicon variant has highest match to themselves
+    
+    intra.dist <- data.table()
+    
+    groups <- split(pwAlignTaxa, pwAlignTaxa$query.variant.type)
+    if (groups$multi[same.rank == 'species', .N] > 0) {
+      intra.dist <- rbind(intra.dist,
+                          groups$multi[same.rank == 'species',
+                                       .(intra.minP = min(pident),
+                                         intra.maxP = max(pident),
+                                         intra.nPairs = .N,
+                                         nTargetSpecies = uniqueN(target.species)),
+                                       .(query.species, same.rank, same.taxa, query.variant.type)],
+                          use.names = T, 
+                          fill = T)
     }
+
+    if (groups$single[,.N] > 0) {    
+      flog.trace("Creating self-matches for query species with SINGLE amplicon variants")
+      ## the self-match is the only possible same-species comparison
+      intra.dist <- rbind(intra.dist, 
+                          unique(groups$single[,.(query.species,
+                                                  same.rank = 'species',
+                                                  same.taxa = query.species,
+                                                  query.variant.type,
+                                                  intra.minP = 100,
+                                                  intra.maxP = 100,
+                                                  intra.nPairs = 1,
+                                                  nTargetSpecies = 1)]),
+                          use.names = T,
+                          fill = T)
+    }
+    
     flog.debug('intra-species: %d query.species - %d records',
                intra.dist[,uniqueN(query.species)],
                intra.dist[,.N])
-
-    ## inter-species boundaries
+    
+    
+    ## *****
+    ## calculate INTER-species boundaries
     inter.dist <- pwAlignTaxa[same.rank!='species',
                               .(inter.minP=min(pident),
                                 inter.maxP=max(pident),
@@ -63,8 +79,8 @@ get_MG_boundary <- compiler::cmpfun(function(pwAlignTaxa, debug=F) {
     flog.debug('inter-species: %d query.species - %d records',
                inter.dist[,uniqueN(query.species)],
                inter.dist[,.N])
-
-
+    
+    
     ## merge tables
     if (exists('intra.dist')) {
       stopifnot(identical(intra.dist$query.species, intra.dist$same.taxa))
