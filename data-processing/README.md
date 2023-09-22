@@ -2,7 +2,7 @@
 
 The scripts in this section processes the pairwise alignments after data generation and prepares the data for the metabarcoding gap visualisation. This is Part B of the workflow schema below.
 
-![](../doc-images/data-generation-workflow.png)
+![](../doc-images/workflow-part-B.png)
 
 
 ## Workflow
