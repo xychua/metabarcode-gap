@@ -164,32 +164,66 @@ This step adopts a map-and-reduce approach, allowing for running in parallel and
 
 ### Example output
 
-* Output is a Rdata object (*.rds) data.table of 10 columns as shown below
+* Output is a Rdata object (*.rds) data.table of 11 columns as shown below
 * This table contains the minimum and maximum similarity value for the intra-rank and inter-rank distribution.
   * For each species, there will be a separate row for every inter-rank pair. That is, the closest species from the next higher taxonomic rank. For example, there are 4 rows for the *Amphiprion sebae* species of inter-ranks: genus, family, class and phylum. There is no {order} row because there were no species of the same order as *Amphiprion sebae* in this data set that consists of amplicons targeted by the *teleo* primer pair.
 
 ```
-       query.species intra.minP intra.maxP intra.nPairs inter.rank       inter.taxa inter.minP inter.maxP inter.nPairs nTargetSpecies
-              <char>      <num>      <num>        <int>      <ord>           <char>      <num>      <num>        <int>          <int>
-1:  Amphiprion sebae       93.8       93.8            2      genus       Amphiprion       87.3      100.0           28             11
-2:  Amphiprion sebae       93.8       93.8            2     family    Pomacentridae       57.8       90.5          152             70
-3:  Amphiprion sebae       93.8       93.8            2      class      Actinopteri       48.4       87.5         9380           3952
-4:  Amphiprion sebae       93.8       93.8            2     phylum         Chordata       44.4       73.4          746            307
-5: Polyodon spathula       96.7       96.7            2      order Acipenseriformes       85.2       95.1           74             30
-6: Polyodon spathula       96.7       96.7            2     phylum         Chordata       47.5       77.8          746            307
+             query.species query.variant.type intra.minP intra.maxP intra.nPairs inter.rank       inter.taxa inter.minP inter.maxP inter.nPairs nTargetSpecies
+1: Acipenser transmontanus             single        100        100            1      class      Actinopteri       47.7       81.0         4742           4002
+2: Acipenser transmontanus             single        100        100            1     phylum         Chordata       49.2       73.8          373            307
+3: Acipenser transmontanus             single        100        100            1     family    Acipenseridae       91.8      100.0           12             10
+4: Acipenser transmontanus             single        100        100            1      genus        Acipenser       91.8      100.0           24             19
+5: Acipenser transmontanus             single        100        100            1      order Acipenseriformes       86.9       91.8            3              2
+6:              Amia calva             single        100        100            1      class      Actinopteri       48.6       77.4         4781           4033
 ```
 
 ## 005_summarise_MGboundary.R
 
-After Steps 1 and 4 have been processed for *all* data, this script then summarise the information into a single table. For every species, there is only one row in output with the minimum intra-species similarity and the maximum inter-species similarity. The output is used as input for metabarcoding gap scatter plot visualisation.
+After Steps 1 to 4 have been processed for *all* data, this script then summarise the information into a single table. For every species, there is only one row in the output table, with:
+
+  * min/max similarity value for sequences from the same species (intra-species) and * min/max similarity value for sequences from the next closest species (inter-species), and
+  * other metadata related the taxonomy lineage and information for the inter-species
+
+The output is used as input for metabarcoding gap scatter plot visualisation.
 
 ### Input
 
 * The output directory (`04-MGboundaries`) from Step 4.
 
-### Output
+### Example output
 
-* One Rdata object (*.rds) data.table (also saved as text format *.tsv file)
+* One Rdata object (*.rds) data.table 
+* One tab-separated text file (*.tsv) of the same table
+* An example of the final output table is in `example-data/teleo_MGboundary.tsv`
+
+```
+Classes ‘data.table’ and 'data.frame':	4341 obs. of  24 variables:
+ $ query.superkingdom  : chr  "Eukaryota" "Eukaryota" "Eukaryota" "Eukaryota" ...
+ $ query.kingdom       : chr  "Metazoa" "Metazoa" "Metazoa" "Metazoa" ...
+ $ query.phylum        : chr  "Chordata" "Chordata" "Chordata" "Chordata" ...
+ $ query.class         : chr  "Actinopteri" "Actinopteri" "Actinopteri" "Actinopteri" ...
+ $ query.order         : chr  "Acipenseriformes" "Amiiformes" "Albuliformes" "" ...
+ $ query.family        : chr  "Acipenseridae" "Amiidae" "Albulidae" "Pomacentridae" ...
+ $ query.genus         : chr  "Acipenser" "Amia" "Pterothrissus" "Abudefduf" ...
+ $ query.species       : chr  "Acipenser transmontanus" "Amia calva" "Pterothrissus gissu" "Abudefduf vaigiensis" ...
+ $ query.group         : chr  "Eukaryota/Metazoa/Chordata/Actinopteri/Actinopteri-subgroup-1" "Eukaryota/Metazoa/Chordata/Actinopteri/Actinopteri-subgroup-1" "Eukaryota/Metazoa/Chordata/Actinopteri/Actinopteri-subgroup-1" "Eukaryota/Metazoa/Chordata/Acti"..
+ $ query.group.rank    : chr  "order" "order" "order" "order" ...
+ $ nVariants           : int  1 1 1 1 1 1 1 1 1 2 ...
+ $ variant.type        : chr  "single" "single" "single" "single" ...
+ $ query.variant.type  : Factor w/ 2 levels "multi","single": 2 2 2 2 2 2 2 2 2 1 ...
+ $ intra.minP          : num  100 100 100 100 100 100 100 100 100 93.8 ...
+ $ intra.maxP          : num  100 100 100 100 100 100 100 100 100 93.8 ...
+ $ intra.nPairs        : num  1 1 1 1 1 1 1 1 1 2 ...
+ $ inter.rank          : Ord.factor w/ 8 levels "superkingdom"<..: 6 3 3 7 4 7 7 7 7 7 ...
+ $ inter.taxa          : chr  "Acipenseridae" "Chordata" "Chordata" "Abudefduf" ...
+ $ inter.minP          : num  91.8 50 42.9 79 47.9 89.1 87.3 85.9 89.1 87.3 ...
+ $ inter.maxP          : num  100 77.8 77.8 100 84.1 100 96.8 92.1 100 100 ...
+ $ inter.nPairs        : int  12 373 373 11 4605 15 15 15 15 28 ...
+ $ nTargetSpecies      : int  10 307 307 9 3901 11 11 11 11 11 ...
+ $ closest.interspecies: num  100 77.8 77.8 100 84.1 100 96.8 92.1 100 100 ...
+ $ MG.type             : Factor w/ 3 levels "overlap","on",..: 2 3 3 2 3 2 3 3 2 1 ...
+```
 
 
 ## 006_MG_scatterplot.R

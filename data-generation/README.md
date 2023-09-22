@@ -1,5 +1,9 @@
 # *in silico* PCR data generation
 
+This guide provides one possible workflow for generating *in silico* PCR amplicon data as input for sequence pairwise alignment. That is Part A of the workflow schema:
+
+![Data generation](../doc-images/workflow-part-A.png)
+
 - [*in silico* PCR data generation](#in-silico-pcr-data-generation)
 - [Step 1 - *in silico* PCR](#step-1---in-silico-pcr)
 - [Step 2 - extract amplicon sequence](#step-2---extract-amplicon-sequence)
@@ -159,7 +163,7 @@ sed -i '1iderepID\tcount\tmerged\ttaxid\tlength' $outFile
 * Some of these might not be active or have changed since, I will check but you can use your own set of criteria
 
 *example files:* 
-- 060_filterAMplicons.R
+- 060_filterAmplicons.R
 - 061_checkOrientation.R
 
 # Step 5 - pairwise global alignment
@@ -186,4 +190,4 @@ sed -i '1iquery\ttarget\tpident\taln_len\tmismatch\tgaps\tqstart\tqend\ttstart\t
 
 # Finished
 
-After this, the pairwise alignments and metadata are used as input for investigating the metabarcoding gaps etc.
+After this, the pairwise alignments and metadata are used as input for investigating the metabarcoding gaps.
