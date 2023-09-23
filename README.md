@@ -2,7 +2,7 @@
 
 This repository describes the process used in the paper
 
-Chua et. al. () 
+Chua et. al. (). Metabarcoding gap visualisation provides easy navigation of taxonomy abnormalities, limitations and comparisons of primer pairs for study design
 
 The workflow is split into data-generation (figure A) and data-processing (figure B) and the process is also split into their respective folders. The method described in the paper is focuses on the visualisation of pairwise alignment data which is the data-processing (figure B) aspect of the workflow. 
 
