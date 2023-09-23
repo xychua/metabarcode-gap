@@ -301,21 +301,23 @@ Three example scripts are provided that generates the three types of figures des
 
 This script generates an example of the metabarcoding gap (MG) scatterplot of the *teleo* amplicon data set after Step 5 of the data processing workflow described above.
 
-![Example of a metabarcoding gap (MG) scatter plot showing the teleo in silico amplicon data. Figure is generated using the example-01__MG-scatterplot.R script.](example-data/teleo_MG-scatterplot.png =800x800)
+![Example of a metabarcoding gap (MG) scatter plot showing the teleo in silico amplicon data. Figure is generated using the example-01__MG-scatterplot.R script.](example-data/teleo_MG-scatterplot.png)
+
+<img src="example-data/teleo_MG-scatterplot.png" width="800"/>
 
 
 ## example-02__MG-histogram.R
 
 This script generates an example of the MG Histogram for a given species of interest. All pairwise alignments of sequences belonging to this species are shown in the histogram which is further segragated by the taxonomy rank of the lowest taxonomy rank. This clearly demonstrates the rank of the next closest relative to the given species of interest.
 
-![Example of the MG histogram for Bagarius yarrelli species of interest of the data set targeted by the teleo primer pair. Figure is generated using the example-02__MG-histogram.R script.](example-data/teleo_MG-histogram.png =400x800)
+![Example of the MG histogram for Bagarius yarrelli species of interest of the data set targeted by the teleo primer pair. Figure is generated using the example-02__MG-histogram.R script.](example-data/teleo_MG-histogram.png)
 
 
 ## example-03__MG-heatmap.R
 
 This script generates an example of a MG Heatmap for a given species of interest. As the number of pairwise alignments can be very big, the heatmap only shows the top most similar alignments to the species of interest to reduce the size of the figure.
 
-![Example of the MG heatmap for Bagarius yarrelli species of interest of the data set targeted by the teleo primar pair. Figure is generated using the example-03__MG-heatmap.R script.](example-data/teleo_MG-heatmap.png =400x800)
+![Example of the MG heatmap for Bagarius yarrelli species of interest of the data set targeted by the teleo primar pair. Figure is generated using the example-03__MG-heatmap.R script.](example-data/teleo_MG-heatmap.png)
 
 
 Other examples of figures can be found in the 'manuscript-figures' folder.
