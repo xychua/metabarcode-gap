@@ -1,7 +1,7 @@
 ## *****************************************************************************
 ## Merge pairwise alignments by groups
 ##
-## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
+## Author: Xin-Yi Chua (x.chua@connect.qut.edu.au)
 ##
 ##
 ## This script takes the pairwise global alignments after being sorted based on
@@ -49,7 +49,7 @@ library(parallel)
 ## parameters ----
 ##
 
-parser <- arg_parser('Merge pairwise alignments by taxonomy groups', 
+parser <- arg_parser("Merge pairwise alignments by taxonomy (or user defined) groups", 
                      name = '002_merge_taxa_groups.R', 
                      hide.opts = T)
 
@@ -76,9 +76,11 @@ parser <- add_argument(parser, '--no-log',
                        flag = T, 
                        nargs = 0,
                        help = 'will not generate a separate log file')
+
 parser <- add_argument(parser, '--logDir',
                        default = 'logs', 
                        help = "specify the existing log directory")
+
 parser <- add_argument(parser, '--debugOn', 
                        flag = T, 
                        nargs = 0,
@@ -90,8 +92,8 @@ args <- parse_args(parser)
 
 ## TEST WITHIN R: uncomment to test within R using demo data provided
 # args <- parse_args(parser, 
-#                    c('data/01-split',
-#                      'data/nt.201905__teleo__taxaMetadata.tsv',
+#                    c('01-splitPWaln',
+#                      'example-data/nt.201905__teleo__taxaMetadata.tsv',
 #                      '--debugOn'))
 
 
@@ -129,7 +131,7 @@ flog.info("
 # %s
 # %s
 #
-# PARAMETERS
+# PARAMETERS:
 #       Input global alignment: %s
 #                Metadata file: %s
 #                 Group column: %s
@@ -191,8 +193,9 @@ flog.info("Num files to parse: %d", pwFiles[,.N])
 ## check if any query files are missing
 missing.dereps <- setdiff(metadata$derepID, pwFiles$derepID)
 flog.warn("Num missing queries (derepID): %d", length(missing.dereps))
-flog.warn("Missing queries (derepIDs): ", missing.dereps, capture = T)
-
+if (length(missing.dereps) > 0) {
+  flog.warn("Missing queries (derepIDs): ", missing.dereps, capture = T)
+}
 
 
 ## ****************************************************************************
@@ -222,7 +225,7 @@ flog.info("Num groups: %d", length(pwGroups))
 flog.debug("Num queries per group: ", 
            pwFiles_meta[order(group), .N, group], capture=T)
 
-z <- pblapply(pwGroups, function(grp) {
+z <- lapply(pwGroups, function(grp) {
   grp_name <- grp$group[1]
   rdsFile <- sprintf('%s/%s.rds', args$outdir, grp_name)
   
@@ -244,7 +247,7 @@ z <- pblapply(pwGroups, function(grp) {
       tmp
     }), use.names=T, fill=T)
 
-    flog.info("Saving: %s [%d records]", rdsFile, dat[,.N])
+    flog.info(" Saving: %s [%d records]", rdsFile, dat[,.N])
     saveRDS(dat, file=rdsFile)
     
     rm(dat); gc()

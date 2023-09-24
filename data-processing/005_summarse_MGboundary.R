@@ -1,7 +1,7 @@
 ## *****************************************************************************
 ## Summarise MGboundary
 ##
-## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
+## Author: Xin-Yi Chua (x.chua@connect.qut.edu.au)
 ##
 ## This script concatenates all the outputs from Step 4 - 004_calc_MGboundary.R
 ## script and then summarise the information for each species.
@@ -33,7 +33,7 @@ TAXA_RANKS <- c('superkingdom', 'kingdom','phylum', 'class', 'order', 'family','
 ## *****************************************************************************
 ## parameters ----
 
-parser <- arg_parser('Summarise the metabarcoding gap boundaries for visualisation.', 
+parser <- arg_parser("Summarise the metabarcoding gap boundaries for each species (one row per species)", 
                      name = '005_sumamrise_MGboundary.R',
                      hide.opts = T)
 
@@ -41,11 +41,12 @@ parser <- add_argument(parser, 'input-dir',
                        help = "Directory path that contains aggregated alignments
                        grouped by species.")
 
-parser <- add_argument(parser, 'metadata',
-                       help = 'metadata file containing the derepID mapped to taxonomy
-                       hierarchy. Only the 7 common ranks are used {species, genus,
-                       family, order, class, phylum, kingdom} and superkingdom if
-                       present. All other columns the metadata file are ignored.')
+parser <- add_argument(parser, 'modified-metadata',
+                       help = 'modified metadata file from Step 3 containing the
+                       derepID mapped to taxonomy hierarchy. Only the 7 common ranks 
+                       are used {species, genus, family, order, class, phylum, 
+                       kingdom} and superkingdom if present. All other columns
+                       the metadata file are ignored.')
 
 parser <- add_argument(parser, '--output-prefix', 
                        default = 'MGboundary',
@@ -77,7 +78,8 @@ args <- parse_args(parser)
 ## TEST WITHIN R: uncomment to test within R using demo data provided
 # args <- parse_args(parser,
 #                    c("04-MGboundary",
-#                      "data/nt.201905__teleo__taxaMetadata.tsv",
+#                      "metadata-variant-type.rds",
+#                      "--output-prefix", "teleo-MGboundary",
 #                      "--debugOn",
 #                      "--no-log"))
 
@@ -109,8 +111,8 @@ if (!dir.exists(args$input_dir)) {
   stop()
 }
 
-if (!file.exists(args$metadata)) {
-  flog.error("Taxonomy file not found: %s", args$metadata )
+if (!file.exists(args$modified_metadata)) {
+  flog.error("Taxonomy file not found: %s", args$modified_metadata )
   stop()
 }
 
@@ -136,7 +138,7 @@ flog.info("
 # %s
 # %s
 #
-# PARAMETERS
+# PARAMETERS:
 #              Input directory: %s
 #       Taxonomy meatdata file: %s
 #               File extension: %s
@@ -153,7 +155,7 @@ flog.info("
           parser$name,
           parser$description,
           args$input_dir,
-          args$metadata,
+          args$modified_metadata,
           EXT,
           logFile,
           args$debug,
@@ -204,14 +206,14 @@ dat[, closest.interspecies:=max(inter.maxP), query.species]
 absLimit <- dat[closest.interspecies == inter.maxP]
 absLimit <- absLimit[, .SD[which.min(inter.rank)], by=query.species]
 
-## calculate whether MG above or below the line
+## calculate whether query species is above or below the diagonal line
 absLimit[,MG.type := ifelse(intra.minP-inter.maxP == 0, 
                             'on',
                             ifelse(intra.minP - inter.maxP < 0, 
                                    'overlap',
                                    'gap'))]
-absLimit[,MG.type:=factor(MG.type, 
-                          levels=c('overlap','on','gap'))]
+absLimit[,MG.type:=factor(MG.type, levels =c('overlap','on','gap'))]
+
 
 flog.info("Overview of metabarcoding gaps",
           absLimit[, .(nSpecies = uniqueN(query.species)), MG.type],
@@ -223,16 +225,18 @@ flog.info("Overview of metabarcoding gaps",
 ##
 
 ## load metadata
-flog.info("Loading: %s", args$metadata)
-metadata <- fread(args$metadata)
-metadata[,nVariants:=uniqueN(derepID), by=TAXA_RANKS]
-metadata[,variant.type:=ifelse(nVariants==1, 'single', 'multi')]
-flog.debug("Num species with SINGLE amplicon variant: %d (%.2f%%)", 
-           metadata[nVariants==1,uniqueN(species)],
-           metadata[nVariants==1,uniqueN(species)]/metadata[,uniqueN(species)]*100)
-flog.debug("Num species with MULTI amplicon variants: %d (%.2f%%)", 
-           metadata[nVariants >1,uniqueN(species)],
-           metadata[nVariants >1,uniqueN(species)]/metadata[,uniqueN(species)]*100)
+flog.info("Loading: %s", args$modified_metadata)
+
+if (endsWith(args$modified_metadata, ".rds")) {
+  metadata <- readRDS(args$modified_metadata)
+} else if (endsWith(args$modified_metadata, ".tsv")) {
+  metadata <- fread(args$modified_metadata)
+}
+
+if (!hasName(metadata, "variant.type")) {
+  flog.error("Metadata file does not have the {variant.type} column from Step 3 - please check")
+  stop()
+}
 
 ## update column names to match format in absLimit {query.species}
 cn <- paste0('query.', TAXA_RANKS)

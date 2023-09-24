@@ -35,7 +35,7 @@ get_MG_boundary <- compiler::cmpfun(function(pwAlignTaxa, debug=F) {
     intra.dist <- data.table()
     
     groups <- split(pwAlignTaxa, pwAlignTaxa$query.variant.type)
-    if (groups$multi[same.rank == 'species', .N] > 0) {
+    if (hasName(groups, 'multi') && groups$multi[same.rank == 'species', .N] > 0) {
       intra.dist <- rbind(intra.dist,
                           groups$multi[same.rank == 'species',
                                        .(intra.minP = min(pident),
@@ -46,8 +46,8 @@ get_MG_boundary <- compiler::cmpfun(function(pwAlignTaxa, debug=F) {
                           use.names = T, 
                           fill = T)
     }
-
-    if (groups$single[,.N] > 0) {    
+    
+    if (hasName(groups, 'single') && groups$single[,.N] > 0) {    
       flog.trace("Creating self-matches for query species with SINGLE amplicon variants")
       ## the self-match is the only possible same-species comparison
       intra.dist <- rbind(intra.dist, 

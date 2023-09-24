@@ -1,7 +1,7 @@
 ## ****************************************************************************
 ## Calculate MG boundary
 ##
-## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
+## Author: Xin-Yi Chua (x.chua@connect.qut.edu.au)
 ##
 ##
 ## This script parses all files (recursively) given an input directory following
@@ -55,7 +55,8 @@ TAXA_RANKS <- c('superkingdom', 'kingdom','phylum', 'class', 'order', 'family','
 ## *****************************************************************************
 ## parameters ----
 
-parser <- arg_parser('Parse global PW alignments and returns summary statistics.', 
+parser <- arg_parser("Aggregate annotated pairwise alignments by species and 
+                     calculate summary statistics for each query/target species pair.", 
                      name = '004_MGboundary_PWalign.R',
                      hide.opts = T)
 
@@ -74,16 +75,15 @@ parser <- add_argument(parser, '--input-ext',
 
 parser <- add_argument(parser, '--file-start',
                        default = 1,
-                       help = "to specify which file to start from. Primarily
-                       for use in HPC environments with job queues (e.g. PBS/SLURM).
+                       help = "file index position from which to start processing.
+                       Primarily for use in HPC environments with job queues (e.g. PBS/SLURM).
                        Allows for processing subset of input files or to resume
                        when job files.")
 
 parser <- add_argument(parser, '--file-num-length',
                        default = -1,
-                       help = 'used with --file-start, to specify the number of
-                       files to process from the start index. If -1, means 
-                       to process all files.')
+                       help = 'number of files to process from --file-start.
+                       If -1, means to process all files.')
 
 parser <- add_argument(parser, '--num-clusters',
                        default = 2,
@@ -154,7 +154,7 @@ flog.info("
 # %s
 # %s
 #
-# PARAMETERS
+# PARAMETERS:
 #       Input global alignment: %s
 #
 #               File extension: %s
@@ -234,7 +234,7 @@ if (START <= END) {
 ## processing ----
 ##
 
-flog.debug("Num files to iterate: %d", nrow(iterFiles))
+flog.info("Num files to iterate: %d", nrow(iterFiles))
 z <- apply(iterFiles, MARGIN = 1, function(fn) {
   rdsFile <- fn[['output']]
   inFile <- fn[['input']]

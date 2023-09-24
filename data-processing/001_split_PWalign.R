@@ -1,7 +1,7 @@
 ## ****************************************************************************
 ## Split and sort pairwise alignment file
 ##
-## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
+## Author: Xin-Yi Chua (x.chua@connect.qut.edu.au)
 ##
 ##
 ## This script splits a single pairwise alignment text file from VSEARCH/USEARCH
@@ -24,23 +24,19 @@
 ##          parameter points to a directory of multiple spliced files.
 ## 
 ##
-## USAGE EXAMPLES
-##
-## 1) Simple mode: specify input file and output directory
-##    > Rscript 001_split_PWalign.R data/nt.201905__teleo__PWlan --outdir 01-splitPWaln
-##
-##
-## DETAILS
-##
+## NOTES:
 ## Requirement for full pairwise alignment: usually with pairwise alignments 
-## being symmetrical such that the value for (i,j) == (j,i) we would only need 
-## to keep either the upper or lower triangle of a pairwise matrix. For example,
-## only retain (i,j). However, one usage of this data is to allow a
-## users to subset the matrix and focus only on the sequences belonging to a set
-## of species, that is, only extract rows from the pairwise matrix of interest.
-## If we only retained half the matrix, then there would be missing values when
-## sub-setting by rows. As such, we also include reciprocal annotations when
-## splitting the input pairwise alignment files by the derepID.
+## being symmetrical such that the value for $(i,j) == (j,i)$ we would only 
+## need to keep either the upper or lower triangle of a pairwise matrix, that 
+## is, only retain (i,j). This is the usual default behaviour from pairwise 
+## alignments like VSEARCH/USEARCH which only provides matches for one
+## direction. However, one usage of this data is to allow a user to query the
+## data to focus on a (or a set of) species of interests, and extract all
+## sequences belonging to that set. This means only extracting rows from the
+## pairwise matrix of sequences belonging to the species of interest. If we only
+## retained half the matrix, then there would be missing values when sub-setting
+## by rows. As such, during step 1 we perform the reciprocal alignments when
+## sorting the input.
 ##
 ##
 ## ****************************************************************************
@@ -56,8 +52,8 @@
 library(argparser)
 library(data.table)
 library(futile.logger)
-library(pbapply)
-library(stringr)
+library(doParallel)
+library(parallel)
 
 
 
@@ -65,48 +61,58 @@ library(stringr)
 ## parameters ----
 ##
 
-parser <- arg_parser('Split pairwise global alignment by derepID (queryID)', 
-                     name='001_split_PWalign.R', 
-                     hide.opts=T)
+parser <- arg_parser("Split and sort pairwise global alignment by queryID",
+                     name = '001_split_PWalign.R', 
+                     hide.opts = T)
 
 parser <- add_argument(parser, 'input_pwAlign', 
-                       help='Pairwise global alignment text file, output from 
+                       help = 'Pairwise global alignment text file, output from 
                        VSEARCH/USEARCH (e.g. nt.201905__teleo__PWaln.gz)')
 
 parser <- add_argument(parser, '--outdir', 
-                       default='01-splitPWaln', 
-                       help='Output directory')
+                       default = '01-splitPWaln', 
+                       help = 'Output directory')
 
 parser <- add_argument(parser, '--prefix', 
-                       default='part', 
-                       help="file prefix after splitting files by lines")
+                       default = 'part', 
+                       help = "file prefix after splitting files by lines")
 
 parser <- add_argument(parser, '--lines', 
-                       short='-L', 
-                       default=as.integer(1000000),
-                       help="put NUMBER lines per output file using Bash `split` command")
+                       short = '-L', 
+                       default = as.integer(1000000),
+                       help = "put NUMBER lines per output file using Bash `split` command")
 
 parser <- add_argument(parser, '--skip-split-lines', 
-                       short='-P', 
-                       flag=T, 
-                       nargs=0,  
-                       help="turn on to skip splitting the input into parts of
+                       short = '-P', 
+                       flag = T, 
+                       nargs = 0,  
+                       help = "turn on to skip splitting the input into parts of
                        [L] lines if already split. The script will fail if there are no parts.")
 
 parser <- add_argument(parser, '--skip-split-query', 
-                       short='-Q', 
-                       flag=T, 
-                       nargs=0, 
-                       help="turn on to skip splitting input by queryID")
+                       short = '-Q', 
+                       flag = T, 
+                       nargs = 0, 
+                       help = "turn on to skip splitting input by queryID")
 
-parser <- add_argument(parser, '--resume', 
-                       default=0,
-                       help='resume by starting from the [ith] file in 
-                       [input_pwAlign] directory after splitting by lines.')
+parser <- add_argument(parser, '--file-start',
+                       default = 1,
+                       help = "only appilicable for Step 2 when splitting by queryID.
+                       This is the file index position from which to start process.")
+
+parser <- add_argument(parser, '--file-num-length',
+                       default = -1,
+                       help = "only applicable for Step 2 when splitting by queryID.
+                       This is the number of files to process from --file-start.
+                       If -1, means to process all files.")
+
+parser <- add_argument(parser, '--num-clusters',
+                       default = 2,
+                       help = 'set the number of clusters for parallel processing')
 
 parser <- add_argument(parser, '--no-log', 
-                       flag=T, 
-                       nargs=0,
+                       flag = T, 
+                       nargs = 0,
                        help='will not generate a separate log file')
 
 parser <- add_argument(parser, '--logDir', 
@@ -114,16 +120,16 @@ parser <- add_argument(parser, '--logDir',
                        help="specify the existing log directory")
 
 parser <- add_argument(parser, '--debugOn', 
-                       flag=T, 
-                       nargs=0, 
-                       help="to turn ON debug mode")
+                       flag = T, 
+                       nargs = 0, 
+                       help = "to turn ON debug mode")
 
 ## get parameters from command line ----
 args <- parse_args(parser)
 
 ## TEST WITHIN R: uncomment to test within R using demo data that is already spliced into parts
-# args <- parse_args(parser, c('data/00_parts', 
-#                              '--prefix', 'nt.201905__teleo__part', 
+# args <- parse_args(parser, c('example-data/00_parts',
+#                              '--prefix', 'nt.201905__teleo__part',
 #                              '--skip-split-lines',
 #                              '--debugOn'))
 
@@ -178,13 +184,15 @@ flog.info("
 # %s
 # %s
 #
-# PARAMETERS
+# PARAMETERS:
 #       Input global alignment: %s
 #            Split file Prefix: %s
 #
 #    Skip splitting into parts: %s
-#  Skip splitting into queries: %s
 #      Num lines per tmp parts: %d
+#  Skip splitting into queries: %s
+#             From file[start]: %s 
+#                    to length: %s (if -1, means all files)
 #
 #                      Logfile: %s
 #                        Debug: %s
@@ -199,11 +207,23 @@ flog.info("
           IN,
           PREFIX,
           args$skip_split_lines,
-          args$skip_split_query,
           args$lines,
+          args$skip_split_query,
+          args$file_start,
+          args$file_num_length,
           logFile,
           args$debugOn,
           OUT.DIR)
+
+
+## ****************************************************************************
+## parallel processing ----
+##
+##    * set the number of clusters
+
+flog.debug("Registering num clusters: %d", args$num_clusters)
+cl <- makeCluster(args$num_clusters)
+registerDoParallel(cl)
 
 
 
@@ -215,6 +235,12 @@ flog.info("
 
 
 if (!args$skip_split_lines) {
+  ## check input is a file and not a directory
+  if (dir.exists(IN)) {
+    flog.error("Input path is a directory, use --skip-split-lines: %s", IN)
+    stop()
+  }
+  
   flog.info("Split into parts with %d lines", args$lines)
   partDir <- sprintf("%s/tmp", OUT.DIR)
   flog.debug("Temp directory: %s", partDir)
@@ -249,26 +275,35 @@ if (!args$skip_split_query) {
   partDir <- IN
   
   flog.info("Parsing parts and split by queryID")
-  files <- list.files(partDir, pattern=PREFIX, full.names = T)
-  if (length(files) <= 0) {
+  iterFiles <- list.files(partDir, pattern=PREFIX, full.names = T)
+  if (length(iterFiles) <= 0) {
     stop("No files found in: ", partDir)
   }
-  flog.info("Total number of files: %d", length(files))
+  flog.info("Total number of files found: %d", length(iterFiles))
   
   ## support resuming from different file positions
-  files <- files[(args$resume+1):(length(files))]
-  flog.info("Starting from file[%d]: %s", args$resume+1, basename(files[1]))
-  flog.info("Num files to parse: %d", length(files))
+  START     <- ifelse(is.na(args$file_start) || args$file_start == -1, 1, args$file_start)
+  ## only work with non existing output
+  if (args$file_num_length == -1) {
+    END <- length(iterFiles)
+  } else {
+    END <- min(START + args$file_num_length-1, length(iterFiles))
+  }
+  if (START <= END) {
+    iterFiles <- iterFiles[START:END]
+  } else {
+    flog.error("START > END iterFiles: %d > %d", START, END)
+    stop()
+  }
   
-  if (length(files) == 0) {
+  if (length(iterFiles) == 0) {
     flog.error("There are no part files found in: %s ", partDir)
-    stop("There are no part files found in: ",partDir)
+    stop("There are no part files found in: ", partDir)
   }
 
   ## switch to mclapply on Linux env
-  # tmp <- mclapply(files, function(fn) {
-  
-  tmp <- pblapply(files, function(fn) {
+  flog.info("Num files to iterate: %d", length(iterFiles))
+  tmp <- lapply(iterFiles, function(fn) {
     flog.debug("Parsing: %s", basename(fn))
     part <- gsub('.*(part_[0-9]{5})','\\1',fn)
     pw <- fread(fn, sep='\t', header=F, showProgress=F)

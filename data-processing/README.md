@@ -188,6 +188,7 @@ Rscript 003_annotate_PWalign.R 02-taxaGroups example-data/nt.201905__teleo__taxa
 ### Example output
 
 * Default output directory is `03-taxaAnnot`
+* 2 modified metadata files: `metadata-variant-type.rds` and `metadata-variant-type.tsv`
 * Output is a Rdata object (*.rds) data.table of 9 columns as shown below
   * The table is still a pairwise alignment table of queries-target pairs, but has been annotated by the species.name of the query and target sequenced. Only the similarity column (`pident`) and coverage columns are retained in this table.
   * The last three column specifies:
@@ -254,7 +255,7 @@ The output is used as input for metabarcoding gap scatter plot visualisation.
 ### Example usage
 
 ```
-Rscript 005_summarise_MGboundary.R 04-MGboundaries 03-taxaAnnot/metadata-variant-type.rds
+Rscript 005_summarise_MGboundary.R 04-MGboundaries metadata-variant-type.rds -o teleo_MGboundary
 ```
 
 ### Example output
@@ -296,6 +297,8 @@ Classes ‘data.table’ and 'data.frame':	4341 obs. of  24 variables:
 
 Three example scripts are provided that generates the three types of figures described in the manuscript. These scripts are designed to be run within `R` (or RStudio).
 
+> Figures found in the manuscript can be found in the 'manuscript-figures' folder.
+
 
 ## example-01__MG-scatterplot.R
 
@@ -327,5 +330,3 @@ This script generates an example of a MG Heatmap for a given species of interest
   <figcaption>Example of the MG heatmap for Bagarius yarrelli species of interest of the data set targeted by the teleo primar pair. Figure is generated using the example-03__MG-heatmap.R script.</figcaption>
 </figure>
 
-
-Other examples of figures can be found in the 'manuscript-figures' folder.

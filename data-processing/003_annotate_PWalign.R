@@ -1,7 +1,7 @@
 ## ****************************************************************************
 ## Annotate PW alignments with taxonomy information
 ##
-## Author: Xin-Yi Chua (x.chua@connect-qut.edu.au)
+## Author: Xin-Yi Chua (x.chua@connect.qut.edu.au)
 ##
 ##
 ## This script parses all files (recursively) given an input directory of
@@ -69,7 +69,7 @@ source("utils/calc_coverage.R")
 ## parameters ----
 ##
 
-parser <- arg_parser('Parse global PW alignments and returns summary statistics.', 
+parser <- arg_parser("Annotate grouped pairwise alignments with taxonomy metadata", 
                      name = '003_annotate_PWalign.R', 
                      hide.opts = T)
 
@@ -99,11 +99,15 @@ parser <- add_argument(parser, '--annot-type',
 
 parser <- add_argument(parser, '--file-start',
                        default = 1,
-                       help = "")
+                       help = "file index position from which to start processing.
+                       Primarily for use in HPC environments with job queues (e.g. PBS/SLURM).
+                       Allows for processing subset of input files or to resume
+                       when job files.")
 
 parser <- add_argument(parser, '--file-num-length',
                        default = -1,
-                       help = "")
+                       help = "number of files to process from --file-start.
+                       If -1, means to process all files.")
 
 parser <- add_argument(parser, '--prefix',
                        default='nt.201905__teleo__', 
@@ -140,8 +144,8 @@ args <- parse_args(parser)
 
 ## TEST WITHIN R: uncomment to test within R using demo data provided
 # args <- parse_args(parser,
-#                    c('data/02-taxaGroup',
-#                      'data/nt.201905__teleo__taxaMetadata.tsv',
+#                    c('02-taxaGroups',
+#                      'example-data/nt.201905__teleo__taxaMetadata.tsv',
 #                      '--annot-type', 'all'))
 
 
@@ -163,9 +167,9 @@ if (!args$annot_type %in% c('multi', 'single', 'all')) {
 }
 
 PREFIX    <- args$prefix
-EXT       <- ifelse(startsWith(args$extension, '*'),
-                    args$extension, 
-                    paste0('*', args$extension))
+EXT       <- ifelse(startsWith(args$input_ext, '*'),
+                    args$input_ext, 
+                    paste0('*', args$input_ext))
 START     <- ifelse(is.na(args$file_start) || args$file_start == -1, 1, args$file_start)
 
 isRDS <- grepl('rds', EXT)
@@ -184,10 +188,14 @@ if (!file.exists(args$metadata)) {
   stop()
 }
 
+## check output path and set output file names
 if (!dir.exists(args$outdir)) {
   flog.debug("Create output directory: %s", args$outdir)
   dir.create(args$outdir)
 }
+
+OUTPUT <- list(rds = "metadata-variant-type.rds",
+               tsv = "metadata-variant-type.tsv")
 
 
 flog.info("
@@ -196,7 +204,7 @@ flog.info("
 # %s
 # %s
 #
-# PARAMETERS
+# PARAMETERS:
 #       Input global alignment: %s
 #       Taxonomy metadata file: %s
 #              Annotation type: %s
@@ -208,7 +216,10 @@ flog.info("
 #                      Logfile: %s
 #                        Debug: %s
 #
-#             OUTPUT directory: %s
+# OUTPUT FILES:
+#                    Directory: %s
+#      Modified metadata (RDS): %s
+#      Modified metadata (TSV): %s
 #
 ###############################################################################
 ", 
@@ -222,7 +233,9 @@ flog.info("
           PREFIX,
           logFile,
           args$debug,
-          args$outdir)
+          args$outdir,
+          OUTPUT$rds,
+          OUTPUT$tsv)
 
 
 ## ****************************************************************************
@@ -277,6 +290,15 @@ flog.debug("Num species with MULTI amplicon variants: %d (%.2f%%)",
            metadata[nVariants >1,uniqueN(species)],
            metadata[nVariants >1,uniqueN(species)]/metadata[,uniqueN(species)]*100)
 
+## save the new metadata output with calculated {nVariants} and {variant.type}
+## attributes for later use
+
+flog.info("Saving modified metadata:
+1) %s
+2) %s", OUTPUT$rds, OUTPUT$tsv)
+saveRDS(metadata, OUTPUT$rds)
+fwrite(metadata, OUTPUT$tsv)
+
 
 
 ## ****************************************************************************
@@ -293,12 +315,14 @@ iterFiles <- gsub('.rds','',gsub(paste0(args$input_dir, '/'), '', pwFiles))
 if (args$annot_type == "all") {
   iterFiles <- metadata[group %in% iterFiles,
                         .N, 
-                        .(output = sprintf('%s/%s_%s.rds', args$outdir, group, variant.type),
+                        .(variant.type,
+                          output = sprintf('%s/%s_%s.rds', args$outdir, group, variant.type),
                           input = sprintf('%s/%s.rds', args$input_dir, group))]
 } else {
-  iterFiles <- metadata[group %in% iterFiles & variant.type == ANNOT.TYPE,
+  iterFiles <- metadata[group %in% iterFiles & variant.type == args$annot_type,
                         .N, 
-                        .(output = sprintf('%s/%s_%s.rds', args$outdir, group, variant.type),
+                        .(variant.type,
+                          output = sprintf('%s/%s_%s.rds', args$outdir, group, variant.type),
                           input = sprintf('%s/%s.rds', args$input_dir, group))]
 }
 
@@ -334,12 +358,19 @@ if (START <= END) {
 ##    * load in all pairwise alignments objects recursively given an input directory
 ##    * annotate the source amplicon and target amplicon
 
-flog.debug("Num files to iterate: %d", nrow(iterFiles))
+
+flog.info("Num files to iterate: %d", nrow(iterFiles))
+
+## change to parApply on Linux env
 z <- apply(iterFiles, MARGIN=1, function(fn) {
-  rdsFile <- fn['output']
+  rdsFile <- fn[['output']]
+  
   if (!file.exists(rdsFile)) {
-    flog.debug("Processing: %s", fn['input'])
-    pairwise <- readRDS(fn['input'])
+    ANNOT.TYPE <- fn[['variant.type']]
+    inputFile <- fn[['input']]
+    
+    flog.debug("Processing: %s", inputFile)
+    pairwise <- readRDS(inputFile)
     setkey(pairwise, query)
     
     ## check output sub-directory
@@ -374,13 +405,9 @@ z <- apply(iterFiles, MARGIN=1, function(fn) {
     ## on what taxonomic rank we are assessing and this can be processed
     ## separately. This is a sanity check that should never be TRUE as iterFiles
     ## is already check above.
-    if (args$annot_type != 'all') {
-      variantPW <- pairwise[variant.type == args$annot_type]
-    } else { 
-      variantPW <- pairwise
-    }
+    variantPW <- pairwise[variant.type == ANNOT.TYPE]
     if (variantPW[,.N] == 0) {
-      flog.warn("No [%s] amplicons in data: %s", args$annot_type, basename(fn))
+      flog.warn("No [%s] amplicons in data: %s", ANNOT.TYPE, basename(inputFile))
       return(NA)
     }
     
@@ -391,11 +418,12 @@ z <- apply(iterFiles, MARGIN=1, function(fn) {
     rm(pairwise, variantPW); gc()
     
     flog.debug("Num groups: %d", length(groups))
-    ## switch to mclapply on Linux env
-    pwAlignTaxa <- pblapply(groups,
-                            annot_taxonomy,
-                            taxonomy = metadata,
-                            debug = args$debug)
+    
+    ## switch to parLapply on Linux env
+    pwAlignTaxa <- lapply(groups,
+                          annot_taxonomy,
+                          taxonomy = metadata,
+                          debug = args$debug)
     
     ## convert character columns to factors to save on file space
     dat <- rbindlist(pwAlignTaxa, use.names=T, fill=T)
