@@ -41,8 +41,6 @@ cat $partsOut > ${outPrefix}.01.hits
 sed -i '1iqseqid\tqstart\tqend\tqlen\tp1.name\tp1.strand\tp1.dot\tp2.name\tp2.strand\tp2.dot\tamplen\tamplicon\tp1.diff\tp2.diff\ttotal.diff' ${outPrefix}.01.hits
 ```
 
-*example file:* 020_insilioPCR_teleo.R
-
 
 # Step 2 - extract amplicon sequence
 
@@ -68,8 +66,6 @@ sed -i '1iqseqid\tqstart\tqend\tqlen\tp1.name\tp1.strand\tp1.dot\tp2.name\tp2.st
 # data object.
 #
 ```
-
-*example file:* 040_getAmpliconFasta.R
 
 
 # Step 3 - dereplicate amplicon sequences
@@ -139,8 +135,6 @@ sed -i 's/>//g' $outFile
 sed -i '1iderepID\tcount\tmerged\ttaxid\tlength' $outFile 
 ```
 
-*example file:* 050_derepAmpTrimmed.sh
-
 # Step 4 - additional filtering amplicons
 
 **Input:** 
@@ -160,11 +154,6 @@ sed -i '1iderepID\tcount\tmerged\ttaxid\tlength' $outFile
   * maximum number of mismatches per primer (default=2bp)
   * removed amplicons with lengths < 10% of the distribution (i.e. too short)
   * check orientation of the sequence, only accept sequences in positive strand orientation
-* Some of these might not be active or have changed since, I will check but you can use your own set of criteria
-
-*example files:* 
-- 060_filterAmplicons.R
-- 061_checkOrientation.R
 
 # Step 5 - pairwise global alignment
 
@@ -184,7 +173,6 @@ vsearch -allpairs_global $inFile -acceptall --userout $outFile --userfields quer
 sed -i '1iquery\ttarget\tpident\taln_len\tmismatch\tgaps\tqstart\tqend\ttstart\ttend\tevalue\tbit_score\tidentities' $outFile
 ```
 
-*example file:* 070_pairwiseGlobal.sh
 
 ---
 
